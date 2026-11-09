@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Print File Preflight · Pioneer Press</title>
+<meta name="description" content="Check your print-ready PDF for CMYK color, image resolution, bleed and fonts before you send it to the printer.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<style>
+:root{
+  --paper:#f7f5f0; --card:#ffffff; --ink:#16181d; --muted:#5e636e; --line:#e3e0d8; --soft:#efece5;
+  --c:#00a3e0; --m:#e5007e; --y:#ffd200; --k:#16181d;
+  --pass:#11845b; --pass-bg:#e5f5ee; --warn:#b26a00; --warn-bg:#fff3dc; --fail:#c62a2f; --fail-bg:#fde8e8;
+  --radius:14px; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--paper);color:var(--ink);line-height:1.5;font-size:15px}
+.cmyk-bar{display:flex;height:6px}.cmyk-bar i{flex:1}.cmyk-bar i:nth-child(1){background:var(--c)}.cmyk-bar i:nth-child(2){background:var(--m)}.cmyk-bar i:nth-child(3){background:var(--y)}.cmyk-bar i:nth-child(4){background:var(--k)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+header{padding:28px 0 8px}
+.brand{display:flex;align-items:center;gap:12px;font-family:Archivo,sans-serif;font-weight:700;letter-spacing:.02em;text-transform:uppercase;font-size:13px;color:var(--muted)}
+.brand svg{width:28px;height:28px}
+h1{font-family:Archivo,sans-serif;font-weight:800;font-size:clamp(30px,5vw,48px);line-height:1.05;margin:18px 0 10px;letter-spacing:-.02em}
+.lede{color:var(--muted);max-width:640px;font-size:17px;margin:0}
+.reqs{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0;padding:0;list-style:none}
+.reqs li{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px;font-weight:500}
+.reqs li b{font-family:var(--mono);font-weight:500;color:var(--m)}
+
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius)}
+#drop{display:block;margin:26px 0 14px;border:2px dashed #cfcac0;border-radius:var(--radius);background:var(--card);padding:44px 20px;text-align:center;cursor:pointer;transition:.15s;position:relative}
+#drop:hover,#drop.over{border-color:var(--m);background:#fff7fb}
+#drop h2{font-family:Archivo,sans-serif;font-size:22px;margin:10px 0 4px}
+#drop p{margin:0;color:var(--muted)}
+#drop .btn{display:inline-block;margin-top:16px}
+#drop svg{width:46px;height:46px}
+.btn{appearance:none;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:10px;padding:9px 16px;font:600 14px Inter,sans-serif;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.ghost:hover{border-color:var(--ink)}
+.btn.small{padding:6px 11px;font-size:13px}
+.privacy{display:flex;align-items:center;gap:6px;justify-content:center;margin-top:14px;font-size:13px;color:var(--muted)}
+
+.settings{padding:14px 18px;display:flex;flex-wrap:wrap;gap:14px 22px;align-items:flex-end}
+.settings label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.settings select,.settings input{font:500 14px Inter,sans-serif;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);min-width:0}
+.settings input[type=number]{width:92px}
+.settings .custom{display:none;gap:6px;align-items:flex-end}
+.settings .custom.show{display:flex}
+.settings details{flex-basis:100%}
+.settings summary{cursor:pointer;font-size:13px;color:var(--muted);font-weight:500}
+.settings .adv{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin:26px 0 10px;gap:10px;flex-wrap:wrap}
+.toolbar h2{font-family:Archivo,sans-serif;margin:0;font-size:20px}
+
+.result{margin:0 0 22px;overflow:hidden}
+.r-head{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.r-title{min-width:0}
+.r-title h3{margin:0;font-size:18px;word-break:break-all;font-family:Archivo,sans-serif}
+.r-meta{color:var(--muted);font-size:13px;font-family:var(--mono)}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;font-weight:700;font-size:14px;white-space:nowrap}
+.pill.pass{background:var(--pass-bg);color:var(--pass)}.pill.warn{background:var(--warn-bg);color:var(--warn)}.pill.fail{background:var(--fail-bg);color:var(--fail)}.pill.busy{background:var(--soft);color:var(--muted)}
+.r-actions{display:flex;gap:8px;align-items:center}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
+.tile{background:var(--card);padding:14px 16px;position:relative}
+.tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px}
+.tile.pass::before{background:var(--pass)}.tile.warn::before{background:var(--y)}.tile.fail::before{background:var(--fail)}
+.tile .t-label{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.tile .t-status{font-family:Archivo,sans-serif;font-weight:700;font-size:17px;margin-top:2px}
+.tile.pass .t-status{color:var(--pass)}.tile.warn .t-status{color:var(--warn)}.tile.fail .t-status{color:var(--fail)}
+.tile .t-sum{font-size:13px;color:var(--muted);margin-top:2px}
+
+.r-body{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:0}
+.r-main{padding:18px 20px;min-width:0}
+.r-side{padding:18px 20px;border-left:1px solid var(--line);background:#fcfbf8}
+@media (max-width:820px){.r-body{grid-template-columns:1fr}.r-side{border-left:0;border-top:1px solid var(--line)}}
+
+.issues{list-style:none;margin:0 0 18px;padding:0;display:flex;flex-direction:column;gap:8px}
+.issue{border-radius:10px;padding:10px 12px 10px 38px;position:relative;font-size:14px}
+.issue::before{position:absolute;left:12px;top:9px;font-weight:800;font-family:Archivo,sans-serif;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:12px;color:#fff}
+.issue.fail{background:var(--fail-bg)}.issue.fail::before{content:"!";background:var(--fail)}
+.issue.warn{background:var(--warn-bg)}.issue.warn::before{content:"!";background:var(--warn)}
+.issue.info{background:var(--soft)}.issue.info::before{content:"i";background:var(--muted)}
+.issue .fix{display:block;color:var(--muted);font-size:13px;margin-top:3px}
+.allgood{background:var(--pass-bg);color:var(--pass);border-radius:10px;padding:12px 14px;font-weight:600;margin-bottom:18px}
+
+details.sec{border-top:1px solid var(--line);padding:10px 0}
+details.sec>summary{cursor:pointer;font-weight:600;font-size:15px;list-style:none;display:flex;align-items:center}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary::after{margin-left:auto;content:"+";font-family:var(--mono);color:var(--muted);font-size:18px}
+details.sec[open]>summary::after{content:"–"}
+details.sec>summary .count{font-family:var(--mono);font-weight:400;color:var(--muted);font-size:13px;margin-left:8px}
+.tbl-wrap{overflow-x:auto;margin-top:8px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:7px 8px;border-bottom:1px solid var(--soft);vertical-align:top}
+td.mono,.mono{font-family:var(--mono);font-size:12.5px}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;font-size:13.5px;margin-top:8px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;word-break:break-word}
+.tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.tag.pass{background:var(--pass-bg);color:var(--pass)}.tag.warn{background:var(--warn-bg);color:var(--warn)}.tag.fail{background:var(--fail-bg);color:var(--fail)}.tag.info{background:var(--soft);color:var(--muted)}
+.swatch{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:6px;border:1px solid rgba(0,0,0,.15);background:repeating-linear-gradient(45deg,#e5007e 0 3px,#ff73b7 3px 6px)}
+
+.thumbs{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.thumbs.one{grid-template-columns:1fr}
+.thumb{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;text-align:center;cursor:zoom-in}
+.thumb canvas{max-width:100%;height:auto;display:block;margin:0 auto;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.thumb .cap{font-size:12px;color:var(--muted);margin-top:6px;font-family:var(--mono)}
+.legend{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);margin-top:12px}
+.legend span{display:flex;align-items:center;gap:8px}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid}
+.side-h{font-family:Archivo,sans-serif;font-size:14px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.loading{padding:30px 20px;color:var(--muted);display:flex;align-items:center;gap:10px}
+.spin{width:18px;height:18px;border-radius:50%;border:3px solid var(--soft);border-top-color:var(--m);animation:sp 0.8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+#modal{position:fixed;inset:0;background:rgba(15,16,20,.78);display:none;align-items:center;justify-content:center;z-index:50;padding:20px;cursor:zoom-out}
+#modal.show{display:flex}
+#modal canvas{max-width:100%;max-height:100%;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+footer{color:var(--muted);font-size:13px;padding:30px 0 50px;text-align:center}
+.empty-note{color:var(--muted);font-size:14px;margin-top:6px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media print{
+  #drop,.settings,.toolbar .btn,.r-actions,footer,.privacy,.reqs{display:none!important}
+  body{background:#fff}.result{break-inside:avoid-page;border:1px solid #ccc}
+  details.sec{display:block}details.sec>*{display:block}
+}
+</style>
+</head>
+<body>
+<div class="cmyk-bar" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 1v30M1 16h30" stroke="currentColor" stroke-width="2"/><path d="M16 7.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" opacity=".9"/></svg>
+      <span id="shopName">Pioneer Press</span>
+    </div>
+    <h1>Is your file ready to print?</h1>
+    <p class="lede">Drop in your PDF and we'll check it the way our prepress team does: color, image resolution, bleed and fonts. You'll get a plain-English list of anything that needs fixing.</p>
+    <ul class="reqs" id="reqs"></ul>
+  </header>
+
+  <label id="drop" tabindex="0">
+    <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="10" y="4" width="28" height="36" rx="3" fill="#fff" stroke="#16181d" stroke-width="2"/><path d="M30 4v8h8" fill="none" stroke="#16181d" stroke-width="2"/><rect x="15" y="44" width="5" height="3" fill="#00a3e0"/><rect x="21" y="44" width="5" height="3" fill="#e5007e"/><rect x="27" y="44" width="5" height="3" fill="#ffd200"/><path d="M24 31V17m-6 6 6-6 6 6" fill="none" stroke="#e5007e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <h2>Drag &amp; drop your print files here</h2>
+    <p>PDF works best. You can check several files at once.</p>
+    <span class="btn">Choose files</span>
+    <input type="file" id="fileInput" multiple class="sr" accept=".pdf,application/pdf,.ai,.eps,.jpg,.jpeg,.png,.tif,.tiff,.psd,.doc,.docx,.pub,*/*">
+  </label>
+  <div class="privacy"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Your files are checked right here in your browser. Nothing is uploaded.</div>
+
+  <div class="panel settings" style="margin-top:18px">
+    <label>Finished (trim) size
+      <select id="finSize"></select>
+    </label>
+    <div class="custom" id="customSize">
+      <label>Width (in)<input type="number" id="cw" step="0.01" min="0.5" value="8.5"></label>
+      <label>Height (in)<input type="number" id="ch" step="0.01" min="0.5" value="11"></label>
+    </div>
+    <details>
+      <summary>Advanced check settings</summary>
+      <div class="adv">
+        <label>Bleed required (in)<input type="number" id="bleedIn" step="0.0625" min="0"></label>
+        <label>Target image res (ppi)<input type="number" id="minPPI" step="10" min="50"></label>
+        <label>Low-res cutoff (ppi)<input type="number" id="lowPPI" step="10" min="30"></label>
+      </div>
+    </details>
+  </div>
+
+  <div class="toolbar" id="toolbar" hidden>
+    <h2 id="resCount">Results</h2>
+    <div style="display:flex;gap:8px"><button class="btn ghost small" id="printAll">Print / save report</button><button class="btn ghost small" id="clearAll">Clear all</button></div>
+  </div>
+  <div id="results"></div>
+
+  <footer id="footer"></footer>
+</div>
+<div id="modal" role="dialog" aria-label="Page preview"></div>
+
+<script type="module">
+/* ==========================================================================
+   SHOP SETTINGS — edit these to match your requirements
+   ========================================================================== */
+const CONFIG = {
+  shopName: 'Pioneer Press',
+  contactEmail: '',          // e.g. 'prepress@yourshop.com' — shown in the footer if set
+  bleedInches: 0.125,        // bleed required past the trim on every side
+  targetPPI: 300,            // images at or above this pass
+  lowResPPI: 150,            // images below this are flagged low-res (fail); in between = warning
+  safeZoneInches: 0.125,     // drawn on previews as the "keep text inside" line
+  maxPagesToRender: 24,      // pages to preview / visually check for bleed artwork
+};
+const PDFJS_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
+const PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
+
+const SIZES = [
+  ['Business card', 3.5, 2], ['Postcard 4×6', 4, 6], ['5×7', 5, 7], ['Quarter letter 4.25×5.5', 4.25, 5.5],
+  ['Half letter 5.5×8.5', 5.5, 8.5], ['6×9', 6, 9], ['Postcard 6×11', 6, 11], ['Rack card 4×9', 4, 9],
+  ['Letter 8.5×11', 8.5, 11], ['Legal 8.5×14', 8.5, 14], ['Folder 9×12', 9, 12], ['Tabloid 11×17', 11, 17],
+  ['12×18', 12, 18], ['Poster 18×24', 18, 24], ['Poster 24×36', 24, 36], ['A4', 8.27, 11.69], ['A5', 5.83, 8.27], ['A3', 11.69, 16.54],
+];
+
+/* ========================================================================== */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtBytes = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1) + ' KB' : b < 1073741824 ? (b/1048576).toFixed(2) + ' MB' : (b/1073741824).toFixed(2) + ' GB';
+const inch = pt => +(pt / 72).toFixed(3);
+const fmtIn = pt => String(+(pt / 72).toFixed(3));
+const plural = (n, w, p) => `${n} ${n === 1 ? w : (p || w + 's')}`;
+const pageList = arr => { const s = [...new Set(arr)].sort((a,b)=>a-b); if (!s.length) return ''; const out=[]; let a=s[0], b=s[0];
+  for (let i=1;i<=s.length;i++){ if (s[i]===b+1){b=s[i];continue;} out.push(a===b?`${a}`:`${a}–${b}`); a=b=s[i]; } return (s.length===1?'page ':'pages ') + out.join(', '); };
+
+/* ---------- settings ---------- */
+let settings = loadSettings();
+function loadSettings(){
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem('preflight-settings') || '{}'); } catch {}
+  return { size: s.size || 'auto', cw: s.cw || 8.5, ch: s.ch || 11,
+    bleedIn: CONFIG.bleedInches, targetPPI: CONFIG.targetPPI, lowPPI: CONFIG.lowResPPI };
+}
+function saveSettings(){ try { localStorage.setItem('preflight-settings', JSON.stringify({size:settings.size,cw:settings.cw,ch:settings.ch})); } catch {} }
+function finishedSize(){
+  if (settings.size === 'auto') return null;
+  if (settings.size === 'custom') return [+settings.cw, +settings.ch];
+  const s = SIZES[+settings.size]; return s ? [s[1], s[2]] : null;
+}
+function initUI(){
+  document.title = `Print File Preflight · ${CONFIG.shopName}`;
+  $('#shopName').textContent = CONFIG.shopName;
+  const sel = $('#finSize');
+  sel.innerHTML = `<option value="auto">Auto-detect from file</option>` + SIZES.map((s,i)=>`<option value="${i}">${esc(s[0])}</option>`).join('') + `<option value="custom">Custom size…</option>`;
+  sel.value = settings.size; $('#cw').value = settings.cw; $('#ch').value = settings.ch;
+  $('#customSize').classList.toggle('show', settings.size === 'custom');
+  $('#bleedIn').value = settings.bleedIn; $('#minPPI').value = settings.targetPPI; $('#lowPPI').value = settings.lowPPI;
+  renderReqs();
+  const f = $('#footer');
+  f.innerHTML = `${esc(CONFIG.shopName)} · File preflight${CONFIG.contactEmail ? ` · Questions? <a href="mailto:${esc(CONFIG.contactEmail)}">${esc(CONFIG.contactEmail)}</a>` : ''}<br>Automated checks catch most problems, but our prepress team reviews every job before it prints.`;
+  const onChange = () => {
+    settings.size = sel.value; settings.cw = +$('#cw').value || 8.5; settings.ch = +$('#ch').value || 11;
+    settings.bleedIn = Math.max(0, +$('#bleedIn').value || 0); settings.targetPPI = +$('#minPPI').value || CONFIG.targetPPI; settings.lowPPI = +$('#lowPPI').value || CONFIG.lowResPPI;
+    $('#customSize').classList.toggle('show', settings.size === 'custom');
+    saveSettings(); renderReqs(); recheckAll();
+  };
+  ['#finSize','#cw','#ch','#bleedIn','#minPPI','#lowPPI'].forEach(id => $(id).addEventListener('change', onChange));
+}
+function renderReqs(){
+  $('#reqs').innerHTML = [`<li>Format <b>PDF</b></li>`, `<li>Color <b>CMYK</b></li>`, `<li>Images <b>${settings.targetPPI} ppi</b></li>`,
+    `<li>Bleed <b>${settings.bleedIn}″</b> each side</li>`, `<li>Fonts <b>embedded</b></li>`].join('');
+}
+
+/* ---------- PDF object helpers (pdf-lib) ---------- */
+const { PDFDocument, PDFName, PDFArray, PDFDict, PDFRef, PDFNumber, PDFRawStream, PDFStream, PDFString, PDFHexString, decodePDFRawStream } = window.PDFLib || {};
+let CTX = null;
+const L = o => (o instanceof PDFRef ? CTX.lookup(o) : o);
+const dictOf = o => { o = L(o); return o instanceof PDFDict ? o : o instanceof PDFStream ? o.dict : null; };
+const get = (d, k) => { d = dictOf(d); if (!d) return undefined; return L(d.get(PDFName.of(k))); };
+const getRaw = (d, k) => { d = dictOf(d); return d ? d.get(PDFName.of(k)) : undefined; };
+const nm = o => (o instanceof PDFName ? (o.decodeText ? o.decodeText() : o.asString().slice(1)) : null);
+const num = o => (o instanceof PDFNumber ? o.asNumber() : NaN);
+const arr = o => { o = L(o); return o instanceof PDFArray ? o.asArray().map(L) : null; };
+const txt = o => { try { return (o instanceof PDFString || o instanceof PDFHexString) ? o.decodeText() : ''; } catch { return ''; } };
+const isTrue = o => o !== undefined && String(o) === 'true';
+const keyOf = (ref, obj) => (ref instanceof PDFRef ? ref.toString() : obj);
+function streamBytes(s){
+  s = L(s);
+  if (s instanceof PDFRawStream) return decodePDFRawStream(s).decode();
+  if (s && typeof s.getContents === 'function') return s.getContents();
+  return new Uint8Array(0);
+}
+function filtersOf(d){ const f = get(d,'Filter'); if (!f) return []; if (f instanceof PDFName) return [nm(f)]; return (arr(f)||[]).map(nm).filter(Boolean); }
+function inherit(node, key){ let n = node; for (let k=0; k<40 && n; k++){ const v = n.get(PDFName.of(key)); if (v !== undefined) return L(v); n = dictOf(n.get(PDFName.of('Parent'))); } }
+function rect(o){ const a = arr(o); if (!a || a.length < 4) return null; const v = a.slice(0,4).map(num); if (v.some(isNaN)) return null;
+  return [Math.min(v[0],v[2]), Math.min(v[1],v[3]), Math.max(v[0],v[2]), Math.max(v[1],v[3])]; }
+const inter = (a,b) => [Math.max(a[0],b[0]), Math.max(a[1],b[1]), Math.min(a[2],b[2]), Math.min(a[3],b[3])];
+const rw = r => r[2]-r[0], rh = r => r[3]-r[1];
+const inset = (r, d) => [r[0]+d, r[1]+d, r[2]-d, r[3]-d];
+const mul = (m, n) => [m[0]*n[0]+m[1]*n[2], m[0]*n[1]+m[1]*n[3], m[2]*n[0]+m[3]*n[2], m[2]*n[1]+m[3]*n[3], m[4]*n[0]+m[5]*n[2]+n[4], m[4]*n[1]+m[5]*n[3]+n[5]];
+
+/* ---------- color spaces ---------- */
+const PROCESS = new Set(['Cyan','Magenta','Yellow','Black']);
+function resolveCS(cs, res, depth = 0){
+  cs = L(cs);
+  const U = { model:'Unknown', label:'Unknown', comps:0 };
+  if (!cs || depth > 8) return U;
+  if (cs instanceof PDFName){
+    const n = nm(cs);
+    switch (n){
+      case 'DeviceRGB': case 'RGB': return { model:'RGB', label:'RGB', comps:3 };
+      case 'DeviceCMYK': case 'CMYK': return { model:'CMYK', label:'CMYK', comps:4 };
+      case 'DeviceGray': case 'G': return { model:'Gray', label:'Grayscale', comps:1 };
+      case 'Pattern': return { model:'Pattern', label:'Pattern', comps:0 };
+    }
+    const r = res ? get(get(res,'ColorSpace'), n) : undefined;
+    return r ? resolveCS(r, null, depth+1) : { ...U, label:n };
+  }
+  const a = arr(cs); if (!a || !a.length) return U;
+  const fam = nm(a[0]);
+  switch (fam){
+    case 'ICCBased': { const n = num(get(a[1],'N')); const m = n===4?'CMYK':n===3?'RGB':n===1?'Gray':'Unknown';
+      return { model:m, label:`${m==='Gray'?'Grayscale':m} (ICC profile)`, comps:n||0 }; }
+    case 'CalRGB': return { model:'RGB', label:'RGB (calibrated)', comps:3 };
+    case 'CalGray': return { model:'Gray', label:'Grayscale (calibrated)', comps:1 };
+    case 'Lab': return { model:'Lab', label:'Lab', comps:3 };
+    case 'Indexed': case 'I': { const b = resolveCS(a[1], res, depth+1); return { ...b, label:`Indexed ${b.label}`, comps:1 }; }
+    case 'Pattern': return a[1] ? resolveCS(a[1], res, depth+1) : { model:'Pattern', label:'Pattern', comps:0 };
+    case 'Separation': { const s = nm(a[1]) || '?';
+      if (s === 'All') return { model:'Registration', label:'Registration', comps:1 };
+      if (s === 'None') return { model:'None', label:'None', comps:1 };
+      if (PROCESS.has(s)) return { model:'CMYK', label:`Process ${s}`, comps:1 };
+      return { model:'Spot', label:`Spot: ${s}`, comps:1, spots:[s] }; }
+    case 'DeviceN': { const names = (arr(a[1])||[]).map(nm).filter(Boolean);
+      const spots = names.filter(x => !PROCESS.has(x) && x !== 'None' && x !== 'All');
+      return spots.length ? { model:'Spot', label:`DeviceN (${names.join(', ')})`, comps:names.length, spots }
+                          : { model:'CMYK', label:'CMYK (DeviceN)', comps:names.length }; }
+  }
+  return { ...U, label: fam || 'Unknown' };
+}
+
+/* ---------- content stream lexer ---------- */
+const WS = new Uint8Array(256); [0,9,10,12,13,32].forEach(c => WS[c]=1);
+const DL = new Uint8Array(256); [40,41,60,62,91,93,123,125,47,37].forEach(c => DL[c]=1);
+const ascii = (b,s,e) => { let o=''; for (let k=s;k<e;k++) o+=String.fromCharCode(b[k]); return o; };
+const decName = s => s.replace(/#([0-9a-fA-F]{2})/g, (_,h) => String.fromCharCode(parseInt(h,16)));
+function lex(b, i){
+  const n = b.length;
+  while (i < n){
+    const c = b[i];
+    if (WS[c]) { i++; continue; }
+    if (c === 37){ while (i<n && b[i]!==10 && b[i]!==13) i++; continue; }
+    if (c === 40){ let d=1; i++; while (i<n && d>0){ const ch=b[i]; if (ch===92){ i+=2; continue; } if (ch===40) d++; else if (ch===41) d--; i++; } return { t:'s', i }; }
+    if (c === 60){ if (b[i+1]===60) return { t:'<<', i:i+2 }; while (i<n && b[i]!==62) i++; return { t:'s', i:i+1 }; }
+    if (c === 62) return { t:'>>', i: b[i+1]===62 ? i+2 : i+1 };
+    if (c === 91) return { t:'[', i:i+1 };
+    if (c === 93) return { t:']', i:i+1 };
+    if (c === 123 || c === 125 || c === 41) { i++; continue; }
+    if (c === 47){ let j=i+1; while (j<n && !WS[b[j]] && !DL[b[j]]) j++; return { t:'n', v:decName(ascii(b,i+1,j)), i:j }; }
+    let j=i; while (j<n && !WS[b[j]] && !DL[b[j]]) j++;
+    const tok = ascii(b,i,j); const f = tok.charCodeAt(0);
+    if ((f>=48&&f<=57) || f===45 || f===43 || f===46) return { t:'#', v:parseFloat(tok), i:j };
+    return { t:'k', v:tok, i:j };
+  }
+  return null;
+}
+
+/* ---------- main analysis ---------- */
+async function analyze(file, buf){
+  const r = { name:file.name, size:file.size, isPdf:false, issues:[], pages:[], images:new Map(), fonts:new Map(), spotsUsed:new Set(), spotsDefined:new Set(),
+    colors:{ rgb:new Set(), cmyk:false, gray:false, lab:new Set(), blendRGB:new Set(), rgbShade:new Set() }, errors:[], transparency:false, annots:0, widgets:0 };
+  const head = ascii(buf, 0, Math.min(buf.length, 1024));
+  const at = head.indexOf('%PDF-');
+  if (at < 0){ r.kind = sniff(buf, file.name); return r; }
+  r.isPdf = true; r.version = head.substr(at+5, 3).replace(/[^\d.]/g,'');
+  if (/\.ai$/i.test(file.name)) r.issues.push({ s:'info', m:'This is an Illustrator file saved with PDF compatibility. We checked the PDF part, but please send an exported PDF for printing.' });
+  let doc;
+  try { doc = await PDFDocument.load(buf, { ignoreEncryption:true, updateMetadata:false, throwOnInvalidObject:false }); }
+  catch (e){ r.damaged = String(e.message || e); return r; }
+  CTX = doc.context;
+  r.encrypted = !!doc.isEncrypted;
+  // document info
+  try { const info = dictOf(CTX.trailerInfo.Info);
+    if (info){ r.title = txt(get(info,'Title')); r.creator = txt(get(info,'Creator')); r.producer = txt(get(info,'Producer'));
+      const x = get(info,'GTS_PDFXVersion'); if (x) r.pdfx = txt(x) || nm(x); } } catch {}
+  const cat = doc.catalog;
+  try { const md = get(cat,'Metadata'); if (md && !r.encrypted){ const x = new TextDecoder().decode(streamBytes(md));
+      const m = x.match(/GTS_PDFXVersion(?:>|=")([^<"]+)/); if (m && !r.pdfx) r.pdfx = m[1].trim();
+      if (!r.creator){ const c = x.match(/CreatorTool(?:>|=")([^<"]+)/); if (c) r.creator = c[1]; } } } catch {}
+  try { const oi = arr(get(cat,'OutputIntents')); if (oi && oi.length){ r.outputIntent = txt(get(oi[0],'OutputConditionIdentifier')) || txt(get(oi[0],'Info')) || 'present';
+      const prof = get(oi[0],'DestOutputProfile'); if (prof) { const n = num(get(prof,'N')); r.outputIntentModel = n===4?'CMYK':n===3?'RGB':n===1?'Gray':''; } } } catch {}
+  r.layers = !!get(cat,'OCProperties');
+  if (r.encrypted){ r.pageCount = doc.getPageCount(); return r; }
+
+  let pages; try { pages = doc.getPages(); } catch (e){ r.damaged = 'The page structure is broken: ' + (e.message||e); return r; }
+  r.pageCount = pages.length;
+  const imgInfoCache = new Map(); let budget = 400e6;
+
+  const tally = (pg, cs, where) => {
+    if (!cs) return;
+    if (cs.model === 'RGB') { if (where === 'shade') r.colors.rgbShade.add(pg.n); else if (where !== 'img') r.colors.rgb.add(pg.n); }
+    else if (cs.model === 'CMYK') r.colors.cmyk = true;
+    else if (cs.model === 'Gray') r.colors.gray = true;
+    else if (cs.model === 'Lab') r.colors.lab.add(pg.n);
+    if (cs.spots) cs.spots.forEach(s => r.spotsUsed.add(s));
+  };
+  const checkGroup = (pg, d) => { const g = get(d,'Group'); if (g && nm(get(g,'S'))==='Transparency'){ r.transparency = true; const cs = get(g,'CS'); if (cs && resolveCS(cs).model==='RGB') r.colors.blendRGB.add(pg.n); } };
+
+  function imageInfo(ref, s){
+    const k = keyOf(ref, s); if (imgInfoCache.has(k)) return imgInfoCache.get(k);
+    const d = s.dict; const filters = filtersOf(d);
+    const mask = isTrue(get(d,'ImageMask'));
+    const info = { key:k, W:num(get(d,'Width')), H:num(get(d,'Height')), bpc:num(get(d,'BitsPerComponent')) || (mask?1:NaN), mask, filters,
+      smask: !!get(d,'SMask'), errs:[], warns:[], placements:[] };
+    const csObj = get(d,'ColorSpace');
+    info.cs = mask ? { model:'Mask', label:'1-bit mask', comps:1 } : csObj ? resolveCS(csObj, null) : filters.includes('JPXDecode') ? { model:'Unknown', label:'JPEG 2000 (embedded)', comps:0 } : { model:'Unknown', label:'Missing', comps:0 };
+    if (!mask && !csObj && !filters.includes('JPXDecode')) info.errs.push('Image has no color space');
+    info.compression = filters.filter(f => !/^(ASCII85Decode|A85|ASCIIHexDecode|AHx)$/.test(f)).map(f => ({DCTDecode:'JPEG', DCT:'JPEG', FlateDecode:'ZIP', Fl:'ZIP', JPXDecode:'JPEG 2000', JBIG2Decode:'JBIG2', CCITTFaxDecode:'CCITT', LZWDecode:'LZW', RunLengthDecode:'RLE'}[f] || f)).join(' + ') || 'None';
+    checkImageData(s, info);
+    imgInfoCache.set(k, info); return info;
+  }
+  function place(pg, ref, s, m, inlineInfo){
+    const info = inlineInfo || imageInfo(ref, s);
+    const wpt = Math.hypot(m[0], m[1]) * pg.uu, hpt = Math.hypot(m[2], m[3]) * pg.uu;
+    if (wpt < 0.01 || hpt < 0.01) return;
+    // image x-axis maps to (a,b), y-axis to (c,d)
+    const px = info.W / (wpt/72), py = info.H / (hpt/72);
+    info.placements.push({ page:pg.n, wIn:wpt/72, hIn:hpt/72, ppi: Math.min(px, py) });
+    if (!r.images.has(info.key)) r.images.set(info.key, info);
+    tally(pg, info.cs, 'img');
+  }
+
+  function interpret(bytes, res, ctm, pg, depth, seen){
+    budget -= bytes.length; if (budget < 0) { r.truncatedScan = true; return; }
+    const st = []; let m = ctm.slice(); let ops = []; let i = 0; let curFont = null;
+    for (;;){
+      const t = lex(bytes, i); if (!t) break; i = t.i;
+      if (t.t !== 'k'){ ops.push(t); if (ops.length > 64) ops.shift(); continue; }
+      const lastName = () => { for (let k=ops.length-1;k>=0;k--) if (ops[k].t==='n') return ops[k].v; return null; };
+      switch (t.v){
+        case 'q': st.push(m); if (st.length > 200) st.shift(); break;
+        case 'Q': if (st.length) m = st.pop(); break;
+        case 'cm': { const v = ops.filter(o=>o.t==='#').slice(-6).map(o=>o.v); if (v.length===6) m = mul(v, m); break; }
+        case 'rg': case 'RG': r.colors.rgb.add(pg.n); break;
+        case 'k': case 'K': r.colors.cmyk = true; break;
+        case 'g': case 'G': r.colors.gray = true; break;
+        case 'cs': case 'CS': { const n = lastName(); if (n) tally(pg, resolveCS(PDFName.of(n), res)); break; }
+        case 'scn': case 'SCN': { const n = lastName(); if (n){ const p = get(get(res,'Pattern'), n); if (p && num(get(p,'PatternType'))===2){ const sh = get(p,'Shading'); if (sh) tally(pg, resolveCS(get(sh,'ColorSpace'), res), 'shade'); } } break; }
+        case 'sh': { const n = lastName(); const sh = n && get(get(res,'Shading'), n); if (sh) tally(pg, resolveCS(get(sh,'ColorSpace'), res), 'shade'); break; }
+        case 'gs': { const n = lastName(); const g = n && get(get(res,'ExtGState'), n);
+          if (g){ const sm = get(g,'SMask'); const ca = num(get(g,'ca')), CA = num(get(g,'CA')); const bm = nm(get(g,'BM'));
+            if ((sm && !(sm instanceof PDFName && nm(sm)==='None')) || ca < 1 || CA < 1 || (bm && bm !== 'Normal' && bm !== 'Compatible')) r.transparency = true; } break; }
+        case 'Tf': { const n = lastName(); curFont = null; if (n){ const fd = get(res,'Font'); const ref = fd && fd.get(PDFName.of(n)); const f = dictOf(ref);
+            if (f) curFont = { k:keyOf(ref, f), f }; } break; }
+        case 'Tj': case 'TJ': case "'": case '"': { if (curFont){ const { k, f } = curFont; if (!r.fonts.has(k)) r.fonts.set(k, fontInfo(f)); r.fonts.get(k).pages.add(pg.n); } break; }
+        case 'Do': { const n = lastName(); if (!n) break; const xo = get(res,'XObject'); const ref = xo && xo.get(PDFName.of(n)); const obj = L(ref);
+          if (!(obj instanceof PDFStream)) { if (n) r.errors.push(`Page ${pg.n}: a placed graphic ("${n}") is missing from the file`); break; }
+          const sub = nm(get(obj.dict,'Subtype'));
+          if (sub === 'Image') place(pg, ref, obj, m);
+          else if (sub === 'Form' && depth < 20){
+            const k = keyOf(ref, obj); if (seen.has(k)) break;
+            const fm = arr(get(obj.dict,'Matrix')); const mat = fm && fm.length===6 ? fm.map(num) : [1,0,0,1,0,0];
+            checkGroup(pg, obj.dict);
+            let fb; try { fb = streamBytes(obj); } catch (e){ r.errors.push(`Page ${pg.n}: part of the artwork couldn't be read (${e.message||e})`); break; }
+            seen.add(k); interpret(fb, get(obj.dict,'Resources') || res, mul(mat, m), pg, depth+1, seen); seen.delete(k);
+          }
+          break; }
+        case 'BI': { i = inlineImage(bytes, i, res, m, pg); break; }
+      }
+      ops = [];
+    }
+  }
+  function inlineImage(b, i, res, m, pg){
+    const d = {}; let key = null, arrv = null;
+    for (;;){
+      const t = lex(b, i); if (!t) return b.length; i = t.i;
+      if (t.t==='k' && t.v==='ID') break;
+      if (t.t==='['){ arrv = []; continue; }
+      if (t.t===']'){ if (key){ d[key] = arrv; key = null; } arrv = null; continue; }
+      if (arrv){ arrv.push(t.v); continue; }
+      if (key === null && t.t === 'n'){ key = t.v; continue; }
+      if (key !== null){ d[key] = t.v; key = null; }
+    }
+    i++;
+    let j = i; const n = b.length;
+    while (j < n-1){ if (b[j]===69 && b[j+1]===73 && WS[b[j-1]] && (j+2>=n || WS[b[j+2]] || DL[b[j+2]])) break; j++; }
+    const mask = d.IM === 'true' || d.ImageMask === 'true';
+    const csv = d.CS ?? d.ColorSpace; let cs;
+    if (mask) cs = { model:'Mask', label:'1-bit mask', comps:1 };
+    else if (Array.isArray(csv)) { const b2 = resolveCS(PDFName.of(String(csv[1]||'')), res); cs = { ...b2, label:'Indexed ' + b2.label, comps:1 }; }
+    else cs = csv ? resolveCS(PDFName.of(String(csv)), res) : { model:'Unknown', label:'Unknown', comps:0 };
+    const f = d.F ?? d.Filter; const filters = Array.isArray(f) ? f : f ? [f] : [];
+    const info = { key:`inline-${pg.n}-${i}`, inline:true, W:+(d.W ?? d.Width), H:+(d.H ?? d.Height), bpc:+(d.BPC ?? d.BitsPerComponent) || 1, mask, cs, filters,
+      compression: filters.filter(f => !/^(ASCII85Decode|A85|ASCIIHexDecode|AHx)$/.test(f)).join(' + ') || 'None', errs:[], warns:[], placements:[] };
+    place(pg, null, null, m, info);
+    return j + 2;
+  }
+
+  for (let p = 0; p < pages.length; p++){
+    const node = pages[p].node; const pg = { n:p+1 };
+    pg.uu = num(get(node,'UserUnit')) || 1;
+    pg.media = rect(inherit(node,'MediaBox')) || [0,0,612,792];
+    const crop = rect(inherit(node,'CropBox'));
+    pg.vis = crop ? inter(crop, pg.media) : pg.media;
+    if (rw(pg.vis) <= 0 || rh(pg.vis) <= 0) pg.vis = pg.media;
+    const tb = rect(get(node,'TrimBox')); pg.trimBox = tb ? inter(tb, pg.vis) : null;
+    const bb = rect(get(node,'BleedBox')); pg.bleed = bb ? inter(bb, pg.vis) : pg.vis;
+    pg.rotate = ((num(inherit(node,'Rotate')) || 0) % 360 + 360) % 360;
+    checkGroup(pg, node);
+    const annots = arr(get(node,'Annots')) || [];
+    for (const a of annots){ const st = nm(get(a,'Subtype')); if (st === 'Widget') r.widgets++; else if (st && st !== 'Link' && st !== 'PrinterMark' && st !== 'TrapNet') r.annots++; }
+    const res = inherit(node,'Resources');
+    let bytes;
+    try {
+      const c = get(node,'Contents');
+      if (c instanceof PDFArray){ const parts = c.asArray().map(x => streamBytes(x)); const tot = parts.reduce((s,x)=>s+x.length+1,0); bytes = new Uint8Array(tot); let o=0; for (const x of parts){ bytes.set(x,o); o+=x.length; bytes[o++]=10; } }
+      else bytes = c ? streamBytes(c) : new Uint8Array(0);
+    } catch (e){ r.errors.push(`Page ${pg.n}: the page content couldn't be read (${e.message||e})`); bytes = new Uint8Array(0); }
+    try { interpret(bytes, res, [1,0,0,1,0,0], pg, 0, new Set()); }
+    catch (e){ r.errors.push(`Page ${pg.n}: problem reading page content (${e.message||e})`); }
+    r.pages.push(pg);
+    if (p % 5 === 4) await new Promise(res => setTimeout(res));
+  }
+
+  // doc-wide sweep: spot colors defined anywhere (patterns, annotations, etc.)
+  try {
+    let count = 0;
+    const visit = (o, d) => { if (d > 6 || ++count > 200000) return; o = o instanceof PDFStream ? o.dict : o;
+      if (o instanceof PDFArray){ const a = o.asArray(); const f = nm(L(a[0]));
+        if (f === 'Separation'){ const s = nm(L(a[1])); if (s && !PROCESS.has(s) && s!=='All' && s!=='None') r.spotsDefined.add(s); }
+        else if (f === 'DeviceN'){ (arr(a[1])||[]).map(nm).forEach(s => { if (s && !PROCESS.has(s) && s!=='All' && s!=='None') r.spotsDefined.add(s); }); }
+        else a.forEach(x => { if (!(x instanceof PDFRef)) visit(x, d+1); }); }
+      else if (o instanceof PDFDict){ for (const [, v] of o.entries()) if (!(v instanceof PDFRef)) visit(v, d+1); } };
+    for (const [, obj] of CTX.enumerateIndirectObjects()) visit(obj, 0);
+  } catch {}
+  r.vecRGBPages = [...new Set([...r.colors.rgb, ...r.colors.rgbShade])].sort((a,b)=>a-b);
+  return r;
+}
+
+function fontInfo(d){
+  const sub = nm(get(d,'Subtype')) || '?';
+  const base = nm(get(d,'BaseFont')) || (sub==='Type3' ? 'Type 3 font' : '(unnamed)');
+  let fd = get(d,'FontDescriptor'), type = sub;
+  if (sub === 'Type0'){ const df = arr(get(d,'DescendantFonts')); const d0 = df && dictOf(df[0]); if (d0){ fd = get(d0,'FontDescriptor'); type = nm(get(d0,'Subtype')) === 'CIDFontType2' ? 'TrueType (CID)' : 'Type 1 / CFF (CID)'; } }
+  let embedded = false;
+  if (sub === 'Type3') { embedded = true; type = 'Type 3'; }
+  else if (fd){
+    const f1 = get(fd,'FontFile'), f2 = get(fd,'FontFile2'), f3 = get(fd,'FontFile3');
+    embedded = !!(f1 || f2 || f3);
+    if (f3){ const s3 = nm(get(f3,'Subtype')); if (s3 === 'OpenType') type = 'OpenType'; else if (sub !== 'Type0') type = 'Type 1 (CFF)'; }
+    else if (f2 && sub !== 'Type0') type = 'TrueType'; else if (f1) type = 'Type 1';
+  }
+  if (type === 'Type1') type = 'Type 1';
+  return { name: base.replace(/^[A-Z]{6}\+/, ''), subset: /^[A-Z]{6}\+/.test(base), type, embedded, pages: new Set() };
+}
+
+function checkImageData(s, info){
+  if (!(s instanceof PDFRawStream)) return;
+  const raw = s.contents; const f = info.filters;
+  if (!(info.W > 0) || !(info.H > 0)) { info.errs.push('Image size (width/height) is missing'); return; }
+  if (!raw || raw.length === 0) { info.errs.push('Image contains no data'); return; }
+  const last = f[f.length-1];
+  if (f.length === 1 && (last === 'DCTDecode' || last === 'DCT')){
+    if (!(raw[0] === 0xFF && raw[1] === 0xD8)) { info.errs.push('JPEG data is corrupted (not a valid JPEG)'); return; }
+    let eoi = false; for (let k = raw.length-1; k >= Math.max(1, raw.length-2048); k--) if (raw[k-1]===0xFF && raw[k]===0xD9) { eoi = true; break; }
+    if (!eoi) info.warns.push('JPEG data may be cut off (missing end marker)');
+    let k = 2;
+    while (k + 9 < raw.length){
+      if (raw[k] !== 0xFF) { break; }
+      const mk = raw[k+1]; if (mk === 0xFF) { k++; continue; }
+      if (mk >= 0xC0 && mk <= 0xCF && mk !== 0xC4 && mk !== 0xC8 && mk !== 0xCC){
+        const h = raw[k+5]<<8 | raw[k+6], w = raw[k+7]<<8 | raw[k+8], nc = raw[k+9];
+        if ((w && w !== info.W) || (h && h !== info.H)) info.errs.push(`JPEG size (${w}×${h}) doesn't match what the PDF says (${info.W}×${info.H})`);
+        if (info.cs.comps && nc && nc !== info.cs.comps && info.cs.model !== 'Unknown' && !info.cs.label.startsWith('Indexed')) info.errs.push(`JPEG has ${nc} color channels but is tagged as ${info.cs.label}`);
+        break;
+      }
+      k += 2 + (raw[k+2]<<8 | raw[k+3]);
+    }
+    return;
+  }
+  if (last === 'JPXDecode'){
+    const ok = (raw[0]===0 && raw[1]===0 && raw[2]===0 && raw[3]===12 && raw[4]===0x6A) || (raw[0]===0xFF && raw[1]===0x4F);
+    if (!ok) info.errs.push('JPEG 2000 data is corrupted');
+    return;
+  }
+  const decodable = new Set(['FlateDecode','Fl','LZWDecode','LZW','ASCIIHexDecode','AHx','ASCII85Decode','A85','RunLengthDecode','RL']);
+  if (f.every(x => decodable.has(x)) && raw.length < 120e6){
+    let out; try { out = decodePDFRawStream(s).decode(); } catch (e){ info.errs.push('Image data is corrupted and can\'t be decompressed'); return; }
+    const comps = info.cs.comps; const bpc = info.bpc || 8;
+    if (comps > 0){ const need = Math.ceil(info.W * comps * bpc / 8) * info.H;
+      if (out.length < need) info.errs.push(`Image data is incomplete (${Math.max(0, Math.round(out.length/need*100))}% present) — the image will print damaged`); }
+  }
+}
+
+function sniff(b, name){
+  const h = (i) => b[i]; const s = ascii(b, 0, Math.min(64, b.length));
+  if (h(0)===0xFF && h(1)===0xD8) return 'JPEG image';
+  if (h(0)===0x89 && s.startsWith('\x89PNG')) return 'PNG image';
+  if (s.startsWith('II*') || s.startsWith('MM\0*')) return 'TIFF image';
+  if (s.startsWith('8BPS')) return 'Photoshop (PSD) file';
+  if (s.startsWith('%!PS-Adobe')) return /EPSF/.test(s) ? 'EPS file' : 'PostScript / Illustrator file (not PDF-compatible)';
+  if (s.startsWith('GIF8')) return 'GIF image';
+  if (h(0)===0xD0 && h(1)===0xCF) return /\.pub$/i.test(name) ? 'Microsoft Publisher file' : 'Microsoft Office (legacy) file';
+  if (s.startsWith('PK')) return /\.docx$/i.test(name) ? 'Word document' : /\.pptx$/i.test(name) ? 'PowerPoint file' : /\.xlsx$/i.test(name) ? 'Excel file' : /\.indd|\.idml/i.test(name) ? 'InDesign file' : 'ZIP / Office file';
+  if (s.startsWith('RIFF') && s.slice(8,12)==='WEBP') return 'WebP image';
+  if (/<svg/i.test(ascii(b,0,Math.min(2048,b.length)))) return 'SVG graphic';
+  if (s.slice(4,12).includes('ftyphei') ) return 'HEIC photo';
+  return (name.split('.').pop() || 'unknown').toUpperCase() + ' file';
+}
+
+/* ---------- bleed geometry ---------- */
+function bleedGeometry(r){
+  const req = settings.bleedIn * 72, tol = 0.75, sizeTol = 0.02*72;
+  const fin = finishedSize();
+  const near = (a, b) => Math.abs(a - b) <= sizeTol;
+  const match = (w, h, W, H) => (near(w,W) && near(h,H)) || (near(w,H) && near(h,W));
+  for (const pg of r.pages){
+    const v = pg.vis, w = rw(v)*pg.uu, h = rh(v)*pg.uu;
+    let trim = null; pg.how = '';
+    if (pg.trimBox && (rw(pg.trimBox) < rw(v) - 0.5 || rh(pg.trimBox) < rh(v) - 0.5 || !fin)) { trim = pg.trimBox; pg.how = 'trimbox'; }
+    if (!trim && fin){
+      const [W, H] = fin.map(x => x*72);
+      if (match(w, h, W + 2*req, H + 2*req)) { trim = inset(v, req/pg.uu); pg.how = 'size'; }
+      else if (match(w, h, W, H)) { trim = v; pg.how = 'size'; }
+      else {
+        // bigger than finished size by an even amount all round → bleed of some other size
+        const opts = [[w-W, h-H], [w-H, h-W]].filter(([a,b]) => a > 0 && b > 0 && Math.abs(a-b) < sizeTol);
+        if (opts.length) { trim = inset(v, opts[0][0]/2/pg.uu); pg.how = 'size'; }
+        else { pg.how = 'mismatch'; pg.expected = `${fin[0]} × ${fin[1]} in`; }
+      }
+    }
+    if (!trim && !fin){
+      const withB = SIZES.find(s => match(w, h, s[1]*72 + 2*req, s[2]*72 + 2*req));
+      const exact = SIZES.find(s => match(w, h, s[1]*72, s[2]*72));
+      if (withB && req > 0) { trim = inset(v, req/pg.uu); pg.how = 'guess'; pg.guess = withB[0]; }
+      else if (exact) { trim = v; pg.how = 'guess'; pg.guess = exact[0]; }
+      else pg.how = 'unknown';
+    }
+    pg.trim = trim;
+    if (trim){
+      const b = pg.bleed;
+      pg.margins = [trim[0]-b[0], b[3]-trim[3], b[2]-trim[2], trim[1]-b[1]].map(x => Math.max(0, x*pg.uu)); // left, top, right, bottom
+      const mn = Math.min(...pg.margins);
+      pg.bleedStatus = (mn >= req - tol) ? 'ok' : (Math.max(...pg.margins) <= tol) ? 'none' : 'short';
+      if (req === 0) pg.bleedStatus = 'ok';
+      pg.trimW = rw(trim)*pg.uu; pg.trimH = rh(trim)*pg.uu;
+    } else { pg.bleedStatus = 'unknown'; pg.trimW = w; pg.trimH = h; }
+  }
+}
+
+/* ---------- rendering & visual bleed check (pdf.js) ---------- */
+let pdfjsP = null;
+function getPdfjs(){ return pdfjsP ||= import(PDFJS_URL).then(m => { m.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; return m; }).catch(() => null); }
+
+async function renderPages(r, buf){
+  const lib = await getPdfjs(); if (!lib) { r.noRender = true; return; }
+  let pdf; try { pdf = await lib.getDocument({ data: buf.slice(), isEvalSupported:false, stopAtErrors:false }).promise; } catch (e){ r.renderFail = String(e.message||e); return; }
+  r.pdfjs = pdf; r.thumbs = [];
+  const nPages = Math.min(pdf.numPages, CONFIG.maxPagesToRender);
+  for (let i = 1; i <= nPages; i++){
+    const pg = r.pages[i-1]; if (!pg) break;
+    try {
+      const page = await pdf.getPage(i);
+      const base = page.getViewport({ scale:1 });
+      const scale = Math.min(4, 1000 / Math.max(base.width, base.height));
+      const vp = page.getViewport({ scale });
+      const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+      const cx = cv.getContext('2d', { willReadFrequently:true });
+      cx.fillStyle = '#fff'; cx.fillRect(0,0,cv.width,cv.height);
+      await page.render({ canvasContext:cx, viewport:vp }).promise;
+      const toC = rr => { const q = vp.convertToViewportRectangle(rr); return [Math.min(q[0],q[2]), Math.min(q[1],q[3]), Math.max(q[0],q[2]), Math.max(q[1],q[3])]; };
+      const img = cx.getImageData(0,0,cv.width,cv.height);
+      const ink = (x0,y0,x1,y1) => { x0=Math.max(0,Math.round(x0)); y0=Math.max(0,Math.round(y0)); x1=Math.min(cv.width,Math.round(x1)); y1=Math.min(cv.height,Math.round(y1));
+        if (x1<=x0 || y1<=y0) return 0; let c=0, t=0; const step = Math.max(1, Math.floor(Math.sqrt((x1-x0)*(y1-y0)/4000)));
+        for (let y=y0;y<y1;y+=step) for (let x=x0;x<x1;x+=step){ const o=(y*cv.width+x)*4; t++; if (Math.min(img.data[o],img.data[o+1],img.data[o+2]) < 238) c++; } return t ? c/t : 0; };
+      const B = toC(pg.bleed);
+      const T = pg.trim ? toC(pg.trim) : null;
+      const sides = ['left','top','right','bottom'];
+      const band = Math.max(2, Math.round(0.03*72*scale));
+      if (T && pg.bleedStatus === 'ok' && settings.bleedIn > 0){
+        // artwork touching the trim edge but not continuing into the bleed?
+        const inner = [[T[0]+1,T[1],T[0]+1+band,T[3]],[T[0],T[1]+1,T[2],T[1]+1+band],[T[2]-1-band,T[1],T[2]-1,T[3]],[T[0],T[3]-1-band,T[2],T[3]-1]];
+        const outer = [[B[0]+1,T[1],B[0]+1+band,T[3]],[T[0],B[1]+1,T[2],B[1]+1+band],[B[2]-1-band,T[1],B[2]-1,T[3]],[T[0],B[3]-1-band,T[2],B[3]-1]];
+        pg.stopsAtTrim = sides.filter((s,k) => ink(...inner[k]) > 0.05 && ink(...outer[k]) < 0.02);
+      }
+      if (pg.bleedStatus === 'none' || pg.bleedStatus === 'short'){
+        const W = cv.width, H = cv.height;
+        const edge = [[0,0,band,H],[0,0,W,band],[W-band,0,W,H],[0,H-band,W,H]];
+        pg.edgeInk = sides.filter((s,k) => ink(...edge[k]) > 0.02);
+      }
+      // thumbnail with overlay
+      const tw = 360, ts = tw / Math.max(cv.width, cv.height);
+      const th = document.createElement('canvas'); th.width = Math.round(cv.width*ts); th.height = Math.round(cv.height*ts);
+      const tx = th.getContext('2d'); tx.drawImage(cv, 0, 0, th.width, th.height);
+      drawOverlay(tx, ts, B, T, pg, scale, cv);
+      r.thumbs.push({ n:i, canvas:th });
+      page.cleanup();
+    } catch (e){ /* rendering problem for a page — analysis still stands */ }
+    await new Promise(res => setTimeout(res));
+  }
+}
+function drawOverlay(c, s, B, T, pg, scale){
+  const R = q => q.map(v => v*s);
+  if (T){
+    const t = R(T), b = R(B);
+    c.save(); c.fillStyle = 'rgba(229,0,126,.16)'; c.beginPath(); c.rect(0,0,c.canvas.width,c.canvas.height); c.rect(t[0],t[1],t[2]-t[0],t[3]-t[1]); c.fill('evenodd'); c.restore();
+    c.strokeStyle = '#e5007e'; c.lineWidth = 1.5; c.setLineDash([]); c.strokeRect(t[0]+.5, t[1]+.5, t[2]-t[0]-1, t[3]-t[1]-1);
+    const sz = CONFIG.safeZoneInches*72*scale*s;
+    if (sz > 1.5){ c.strokeStyle = '#00a3e0'; c.lineWidth = 1; c.setLineDash([4,3]); c.strokeRect(t[0]+sz, t[1]+sz, t[2]-t[0]-2*sz, t[3]-t[1]-2*sz); c.setLineDash([]); }
+  }
+}
+function enlarge(r, n){
+  const modal = $('#modal'); modal.innerHTML = '<div class="spin"></div>'; modal.classList.add('show');
+  (async () => {
+    try {
+      const page = await r.pdfjs.getPage(n); const base = page.getViewport({ scale:1 });
+      const scale = Math.min(window.innerWidth*0.92/base.width, window.innerHeight*0.92/base.height) * (window.devicePixelRatio||1);
+      const vp = page.getViewport({ scale }); const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+      cv.style.width = (vp.width/(window.devicePixelRatio||1)) + 'px';
+      const cx = cv.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,cv.width,cv.height);
+      await page.render({ canvasContext:cx, viewport:vp }).promise;
+      const pg = r.pages[n-1]; const toC = rr => { const q = vp.convertToViewportRectangle(rr); return [Math.min(q[0],q[2]), Math.min(q[1],q[3]), Math.max(q[0],q[2]), Math.max(q[1],q[3])]; };
+      drawOverlay(cx, 1, toC(pg.bleed), pg.trim ? toC(pg.trim) : null, pg, scale);
+      modal.innerHTML = ''; modal.appendChild(cv);
+    } catch { modal.classList.remove('show'); }
+  })();
+}
+$('#modal').addEventListener('click', () => $('#modal').classList.remove('show'));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modal').classList.remove('show'); });
+
+/* ---------- verdicts ---------- */
+function evaluate(r){
+  const C = {}; const I = [];
+  const add = (s, m, fix) => I.push({ s, m, fix });
+  if (!r.isPdf){
+    C.pdf = { s:'fail', sum:`This is a ${r.kind}` };
+    add('fail', `This file is a ${r.kind}, not a PDF.`, 'Please export a print PDF. Most apps have File → Export (or Save As) → PDF. In Adobe apps, choose “Adobe PDF (Print)” with the PDF/X-1a or PDF/X-4 preset.');
+    return { C, I, overall:'fail' };
+  }
+  if (r.damaged){ C.pdf = { s:'fail', sum:'File is damaged' }; add('fail', `The PDF is damaged and couldn't be read (${r.damaged}).`, 'Re-export the PDF from your original design file and try again.'); return { C, I, overall:'fail' }; }
+  if (r.encrypted){ C.pdf = { s:'fail', sum:'Password-protected' }; add('fail', 'This PDF is password-protected or secured, so it can\'t be checked or printed reliably.', 'Re-save the PDF without security/password settings.'); return { C, I, overall:'fail' }; }
+  C.pdf = { s:'pass', sum:`PDF ${r.version}${r.pdfx ? ' · ' + r.pdfx : ''}` };
+
+  // color
+  const imgs = [...r.images.values()];
+  const rgbImgs = imgs.filter(x => x.cs.model === 'RGB');
+  const spots = [...new Set([...r.spotsUsed, ...r.spotsDefined])];
+  if (rgbImgs.length || r.vecRGBPages.length){
+    const parts = [];
+    if (rgbImgs.length) parts.push(plural(rgbImgs.length, 'RGB image'));
+    if (r.vecRGBPages.length) parts.push('RGB text/shapes');
+    C.cmyk = { s:'fail', sum: parts.join(' + ') };
+    if (rgbImgs.length) add('fail', `${plural(rgbImgs.length, 'image is', 'images are')} in RGB color (${pageList(rgbImgs.flatMap(x=>x.placements.map(p=>p.page)))}). RGB colors can shift — especially bright blues, greens and oranges — when printed.`, 'Convert images to CMYK in Photoshop (Edit → Convert to Profile), or export the PDF with Color Conversion set to “Convert to Destination” and a CMYK profile.');
+    if (r.vecRGBPages.length) add('fail', `Text or shapes use RGB colors on ${pageList(r.vecRGBPages)}.`, 'Change your swatches/colors to CMYK (in Illustrator/InDesign: Swatch Options → Color Mode: CMYK; in Canva: download “PDF Print” with the CMYK option).');
+  } else if (r.colors.lab.size){ C.cmyk = { s:'warn', sum:'Contains Lab color' }; add('warn', `Lab colors are used on ${pageList([...r.colors.lab])}; they'll be converted to CMYK when printed.`, 'Convert Lab colors to CMYK if exact color matters.'); }
+  else if (spots.length){ C.cmyk = { s:'warn', sum:`CMYK + ${plural(spots.length, 'spot color')}` }; }
+  else if (r.colors.blendRGB.size){ C.cmyk = { s:'warn', sum:'RGB transparency blend' }; }
+  else C.cmyk = { s:'pass', sum: r.colors.gray && !r.colors.cmyk && !imgs.some(x=>x.cs.model==='CMYK') ? 'Grayscale / CMYK' : 'All CMYK' };
+  if (spots.length) add('warn', `Contains ${plural(spots.length, 'spot color')}: ${spots.join(', ')}.`, 'Fine if this job prints with spot inks. Otherwise, convert spot colors to CMYK process (Swatch Options → Color Type: Process) — they\'ll be converted automatically and may shift.');
+  if (r.colors.blendRGB.size && !rgbImgs.length && !r.vecRGBPages.length) add('warn', `The transparency blend space is RGB on ${pageList([...r.colors.blendRGB])}, which can shift colors where effects overlap.`, 'In InDesign/Illustrator set Edit → Transparency Blend Space → Document CMYK before exporting.');
+  if (r.outputIntentModel === 'RGB') add('warn', 'The PDF is tagged for an RGB output device.', 'Export with a CMYK output intent (e.g. a PDF/X preset with a CMYK profile).');
+
+  // resolution
+  const real = imgs.filter(x => !x.mask && x.bpc !== 1 && x.W > 4 && x.H > 4 && x.placements.length);
+  real.forEach(x => { x.minPPI = Math.min(...x.placements.map(p => p.ppi)); });
+  const low = real.filter(x => x.minPPI < settings.lowPPI), mid = real.filter(x => x.minPPI >= settings.lowPPI && x.minPPI < settings.targetPPI - 0.5);
+  if (!real.length) C.res = { s:'pass', sum: imgs.length ? 'Only line-art/masks' : 'No images (all vector)' };
+  else if (low.length) C.res = { s:'fail', sum:`${plural(low.length, 'low-res image')} · lowest ${Math.round(Math.min(...low.map(x=>x.minPPI)))} ppi` };
+  else if (mid.length) C.res = { s:'warn', sum:`${plural(mid.length, 'image')} under ${settings.targetPPI} ppi` };
+  else C.res = { s:'pass', sum:`${plural(real.length, 'image')} · lowest ${Math.round(Math.min(...real.map(x=>x.minPPI)))} ppi` };
+  if (low.length) add('fail', `${plural(low.length, 'image is', 'images are')} low resolution (under ${settings.lowPPI} ppi) and will look blurry or pixelated: ${low.map(x=>`${Math.round(x.minPPI)} ppi on ${pageList(x.placements.map(p=>p.page))}`).join('; ')}.`, `Use the original high-quality image, at least ${settings.targetPPI} ppi at the size it prints. Enlarging a small image in Photoshop won't add detail; images saved from websites or social media are usually too small.`);
+  if (mid.length) add('warn', `${plural(mid.length, 'image is', 'images are')} between ${settings.lowPPI} and ${settings.targetPPI} ppi and may look slightly soft: ${mid.map(x=>`${Math.round(x.minPPI)} ppi on ${pageList(x.placements.map(p=>p.page))}`).join('; ')}.`, 'Usually acceptable for photos; replace with higher-resolution images for the sharpest result.');
+
+  // bleed
+  const pg = r.pages;
+  const bad = pg.filter(p => (p.bleedStatus === 'none' || p.bleedStatus === 'short') && (p.edgeInk === undefined || p.edgeInk.length));
+  const softNone = pg.filter(p => (p.bleedStatus === 'none' || p.bleedStatus === 'short') && p.edgeInk && !p.edgeInk.length);
+  const unknown = pg.filter(p => p.bleedStatus === 'unknown');
+  const stops = pg.filter(p => p.stopsAtTrim && p.stopsAtTrim.length);
+  const need = `${settings.bleedIn}″`;
+  if (settings.bleedIn === 0) C.bleed = { s:'pass', sum:'Not required' };
+  else if (bad.length){
+    const short = bad.filter(p => p.bleedStatus === 'short');
+    C.bleed = { s:'fail', sum: short.length && short.length === bad.length ? "Bleed too small" : 'No bleed' };
+    const none = bad.filter(p => p.bleedStatus === 'none');
+    if (none.length) add('fail', `No bleed on ${pageList(none.map(p=>p.n))}${none[0].guess ? ` (page is exactly ${none[0].guess})` : ''}. Artwork that touches the edge may end up with thin white slivers after trimming.`, `Extend backgrounds and images ${need} past the trim edge on all sides, then export with bleed turned on (Adobe: Export → Marks and Bleeds → “Use Document Bleed Settings”; Canva: “Crop marks and bleed”). The PDF page should be ${need}×2 larger than the finished size.`);
+    if (short.length) add('fail', `Bleed is too small on ${pageList(short.map(p=>p.n))} — found ${short.map(p => fmtMargins(p)).filter((v,i,a)=>a.indexOf(v)===i).join('; ')}; we need ${need} on every side.`, `Set the document bleed to ${need} on all sides and re-export.`);
+  }
+  else if (softNone.length && !unknown.length) C.bleed = { s:'warn', sum:'No bleed, white edges' };
+  else if (unknown.length) C.bleed = { s:'warn', sum:"Can't confirm" };
+  else if (stops.length) C.bleed = { s:'warn', sum:'Bleed area empty in places' };
+  else C.bleed = { s:'pass', sum:`${need} on all sides` };
+  if (softNone.length) add('warn', `No bleed on ${pageList(softNone.map(p=>p.n))}, but nothing on the page touches the edge, so it will probably print fine.`, `If any color or image should run to the edge, extend it ${need} past the trim and export with bleed.`);
+  if (unknown.length){
+    const p0 = unknown[0];
+    if (p0.how === 'mismatch') add('warn', `Page size is ${fmtIn(p0.trimW)} × ${fmtIn(p0.trimH)} in, which doesn't match the finished size you picked (${p0.expected}) with or without bleed.`, 'Double-check the finished size above, or resize the document to the correct size plus bleed.');
+    else add('warn', `We couldn't tell the finished size of ${pageList(unknown.map(p=>p.n))} (${fmtIn(p0.trimW)} × ${fmtIn(p0.trimH)} in), so bleed couldn't be confirmed.`, 'Pick your finished (trim) size in the box above to check bleed — or export with a trim box (Adobe PDF presets do this automatically when bleed is on).');
+  }
+  if (stops.length) add('warn', `Artwork stops at the trim line and doesn't continue into the bleed on ${stops.map(p => `page ${p.n} (${p.stopsAtTrim.join(', ')})`).join('; ')}.`, 'Stretch backgrounds and edge images out to the bleed line (the outer edge), not just to the trim.');
+
+  // fonts
+  const fonts = [...r.fonts.values()];
+  const unemb = fonts.filter(f => !f.embedded);
+  if (!fonts.length) C.fonts = { s:'pass', sum:'No live text (outlined)' };
+  else if (unemb.length) { C.fonts = { s:'fail', sum:`${plural(unemb.length, 'font')} not embedded` }; add('fail', `${plural(unemb.length, 'font is', 'fonts are')} not embedded: ${unemb.map(f=>f.name).join(', ')}. The printer will substitute a different font, which can change spacing and line breaks.`, 'Export with a PDF/X preset (embeds fonts automatically), make sure the font license allows embedding, or convert text to outlines.'); }
+  else C.fonts = { s:'pass', sum:`${plural(fonts.length, 'font')}, all embedded` };
+  if (fonts.some(f => f.type === 'Type 3')) add('info', 'Some text uses Type 3 fonts (often from Word, Canva or screenshots-to-PDF); these can print slightly rough.', 'If text looks fuzzy in proofs, re-export from the original app with standard fonts.');
+
+  // integrity
+  const errImgs = imgs.filter(x => x.errs.length), warnImgs = imgs.filter(x => !x.errs.length && x.warns.length);
+  if (errImgs.length || r.errors.length){ C.integrity = { s:'fail', sum: errImgs.length ? `${plural(errImgs.length, 'broken image')}` : 'Content errors' };
+    errImgs.forEach(x => add('fail', `Image on ${pageList(x.placements.map(p=>p.page))} has an error: ${x.errs.join('; ')}.`, 'Re-link or re-place the original image and export the PDF again.'));
+    [...new Set(r.errors)].slice(0,8).forEach(e => add('fail', e + '.', 'Re-export the PDF from the original design file.')); }
+  else if (warnImgs.length){ C.integrity = { s:'warn', sum:'Possible image problem' }; warnImgs.forEach(x => add('warn', `Image on ${pageList(x.placements.map(p=>p.page))}: ${x.warns.join('; ')}.`, 'Check this image in the proof; re-place it if anything looks wrong.')); }
+  else C.integrity = { s:'pass', sum: imgs.length ? 'All images readable' : 'No problems found' };
+
+  // other notes
+  const sizes = [...new Set(pg.map(p => `${fmtIn(p.trimW)} × ${fmtIn(p.trimH)}`))];
+  if (sizes.length > 1) add('warn', `Pages are different sizes: ${sizes.map(s=>s+' in').join(', ')}.`, 'Make sure every page in the PDF is the same finished size unless that\'s intended.');
+  if (r.annots) add('info', `Contains ${plural(r.annots, 'comment or markup')} — these usually won't print.`, 'Flatten or remove comments before sending if they should (or shouldn\'t) appear.');
+  if (r.widgets) add('info', `Contains ${plural(r.widgets, 'form field')}. Fillable fields may not print the way they look on screen.`, 'Flatten the form (Print to PDF) before sending.');
+  if (r.layers) add('info', 'The PDF has layers. We print what\'s visible by default.', 'Hide or delete any layers you don\'t want printed before exporting.');
+  if (r.truncatedScan) add('info', 'This file is very complex; some content was skipped during the check.');
+  if (r.noRender) add('info', 'Page previews couldn\'t load (no internet connection to the preview library). All other checks still ran.');
+
+  const order = { fail:0, warn:1, info:2 };
+  I.sort((a,b) => order[a.s] - order[b.s]);
+  const states = Object.values(C).map(c => c.s);
+  const overall = states.includes('fail') ? 'fail' : states.includes('warn') ? 'warn' : 'pass';
+  return { C, I, overall };
+}
+function fmtMargins(p){ const m = p.margins.map(x => +(x/72).toFixed(3)); return m.every(v => v === m[0]) ? `${m[0]}″` : `L ${m[0]}″ / T ${m[1]}″ / R ${m[2]}″ / B ${m[3]}″`; }
+
+/* ---------- UI ---------- */
+const jobs = [];   // { id, file, buf, r, el }
+let seq = 0;
+const LABELS = { pdf:'File format', cmyk:'Color mode', res:'Image resolution', bleed:'Bleed', fonts:'Fonts', integrity:'File health' };
+const STATUS_WORD = { pass:'Pass', warn:'Check', fail:'Fix needed' };
+const OVERALL = { pass:'✓ Ready for print', warn:'⚠ Review warnings', fail:'✕ Needs fixes' };
+
+async function addFiles(list){
+  for (const file of list){
+    const job = { id: ++seq, file };
+    job.el = document.createElement('section'); job.el.className = 'panel result';
+    job.el.innerHTML = `<div class="r-head"><div class="r-title"><h3>${esc(file.name)}</h3><div class="r-meta">${fmtBytes(file.size)}</div></div><span class="pill busy">Checking…</span></div><div class="loading"><div class="spin"></div>Reading file…</div>`;
+    $('#results').append(job.el); jobs.push(job); updateToolbar();
+    await runJob(job);
+  }
+}
+async function runJob(job){
+  try {
+    job.buf = job.buf || new Uint8Array(await job.file.arrayBuffer());
+    if (job.r && job.r.pdfjs) { try { job.r.pdfjs.destroy(); } catch {} }
+    const r = await analyze(job.file, job.buf);
+    job.r = r;
+    if (r.isPdf && !r.damaged && !r.encrypted){
+      bleedGeometry(r);
+      const ld = job.el.querySelector('.loading'); if (ld) ld.lastChild.textContent = 'Rendering pages…';
+      await renderPages(r, job.buf);
+    }
+    r.verdict = evaluate(r);
+    paint(job);
+  } catch (e){
+    console.error(e);
+    job.el.innerHTML = `<div class="r-head"><div class="r-title"><h3>${esc(job.file.name)}</h3><div class="r-meta">${fmtBytes(job.file.size)}</div></div><span class="pill fail">✕ Couldn't check</span></div><div class="r-main"><ul class="issues"><li class="issue fail">Something went wrong reading this file: ${esc(e.message||e)}<span class="fix">Try re-exporting the PDF, or send it to us and we'll take a look.</span></li></ul></div>`;
+  }
+}
+async function recheckAll(){ for (const j of jobs){ j.el.querySelector('.pill').className='pill busy'; j.el.querySelector('.pill').textContent='Re-checking…'; await runJob(j); } }
+
+function paint(job){
+  const r = job.r, v = r.verdict, el = job.el;
+  const meta = [fmtBytes(r.size)]; if (r.isPdf && r.pageCount != null) meta.push(plural(r.pageCount, 'page'));
+  if (r.pages && r.pages[0]) meta.push(`${fmtIn(r.pages[0].trimW)} × ${fmtIn(r.pages[0].trimH)} in`);
+  const tiles = Object.entries(v.C).map(([k,c]) => `<div class="tile ${c.s}"><div class="t-label">${LABELS[k]}</div><div class="t-status">${STATUS_WORD[c.s]}</div><div class="t-sum">${esc(c.sum)}</div></div>`).join('');
+  const issues = v.I.length ? `<ul class="issues">${v.I.map(i => `<li class="issue ${i.s}">${esc(i.m)}${i.fix ? `<span class="fix"><b>How to fix:</b> ${esc(i.fix)}</span>` : ''}</li>`).join('')}</ul>` : '';
+  const good = v.overall === 'pass' ? `<div class="allgood">Everything we check looks good. This file is ready for print.</div>` : '';
+  el.innerHTML = `
+    <div class="r-head"><div class="r-title"><h3>${esc(r.name)}</h3><div class="r-meta">${meta.map(esc).join(' · ')}</div></div>
+      <div class="r-actions"><span class="pill ${v.overall}">${OVERALL[v.overall]}</span><button class="btn ghost small" data-act="copy" title="Copy a text summary">Copy report</button><button class="btn ghost small" data-act="remove" aria-label="Remove">✕</button></div></div>
+    <div class="tiles">${tiles}</div>
+    <div class="r-body"><div class="r-main">${good}${issues}${r.isPdf && !r.damaged && !r.encrypted ? details(r) : ''}</div>
+    <div class="r-side">${side(r)}</div></div>`;
+  if (!r.isPdf || r.damaged || r.encrypted) el.querySelector('.r-body').style.gridTemplateColumns = '1fr', el.querySelector('.r-side').remove();
+  const th = el.querySelector('.thumbs');
+  if (th && r.thumbs) r.thumbs.forEach(t => { const d = document.createElement('div'); d.className = 'thumb'; d.title = 'Click to enlarge'; d.appendChild(t.canvas); d.insertAdjacentHTML('beforeend', `<div class="cap">Page ${t.n}</div>`); d.onclick = () => enlarge(r, t.n); th.appendChild(d); });
+  el.querySelector('[data-act=remove]').onclick = () => { try { r.pdfjs && r.pdfjs.destroy(); } catch {} el.remove(); jobs.splice(jobs.indexOf(job), 1); updateToolbar(); };
+  el.querySelector('[data-act=copy]').onclick = async (e) => { const t = textReport(r); try { await navigator.clipboard.writeText(t); e.target.textContent = 'Copied ✓'; } catch { prompt('Copy this report:', t); } setTimeout(() => e.target.textContent = 'Copy report', 1800); };
+}
+function side(r){
+  if (!r.isPdf) return '';
+  const n = r.thumbs ? r.thumbs.length : 0;
+  let h = `<h4 class="side-h">Preview</h4>`;
+  if (!n) return h + `<p class="empty-note">${r.noRender ? 'Preview unavailable offline.' : 'No preview available.'}</p>`;
+  h += `<div class="thumbs ${n===1?'one':''}"></div>`;
+  if (r.pageCount > n) h += `<p class="empty-note">Showing the first ${n} of ${r.pageCount} pages.</p>`;
+  if (r.pages.some(p => p.trim)) h += `<div class="legend"><span><i style="border-color:#e5007e"></i>Trim line (where it's cut)</span><span><i style="border-color:rgba(229,0,126,.35);border-top-width:8px"></i>Bleed area (trimmed off)</span><span><i style="border-color:#00a3e0;border-top-style:dashed"></i>Safe zone — keep text inside</span></div>`;
+  return h;
+}
+function details(r){
+  const imgs = [...r.images.values()]; const fonts = [...r.fonts.values()];
+  const spots = [...new Set([...r.spotsUsed, ...r.spotsDefined])];
+  const p0 = r.pages[0];
+  const kv = [
+    ['File name', esc(r.name)], ['File size', fmtBytes(r.size)], ['PDF version', esc(r.version)], ['Pages', r.pageCount],
+    ['Finished size', p0 ? `${fmtIn(p0.trimW)} × ${fmtIn(p0.trimH)} in${p0.how==='guess'&&p0.guess?` <span class="tag info">${esc(p0.guess)}</span>`:''}` : '—'],
+    ['Page size w/ bleed', p0 ? `${fmtIn(rw(p0.bleed)*p0.uu)} × ${fmtIn(rh(p0.bleed)*p0.uu)} in` : '—'],
+    ['Bleed', p0 && p0.margins ? fmtMargins(p0) : '—'],
+    ['PDF/X standard', r.pdfx ? esc(r.pdfx) : 'None'],
+    ['Output intent', r.outputIntent ? esc(r.outputIntent) : 'None'],
+    ['Color spaces', colorSummary(r)],
+    ['Spot colors', spots.length ? spots.map(s => `<span class="swatch"></span>${esc(s)}`).join('<br>') : 'None'],
+    ['Images', `${imgs.length}${imgs.length ? ` (${imgs.reduce((s,x)=>s+x.placements.length,0)} placements)` : ''}`],
+    ['Fonts', fonts.length ? `${fonts.length} (${fonts.filter(f=>f.embedded).length} embedded)` : 'None'],
+    ['Transparency', r.transparency ? 'Yes' : 'No'],
+    ['Created with', esc([r.creator, r.producer].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' / ') || 'Unknown')],
+  ];
+  let h = `<details class="sec" open><summary>File info</summary><dl class="kv">${kv.map(([k,v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></details>`;
+  // images
+  if (imgs.length){
+    const rows = imgs.map(x => {
+      const minP = x.placements.length ? Math.min(...x.placements.map(p=>p.ppi)) : NaN;
+      const p = x.placements.reduce((a,b) => (b.ppi < a.ppi ? b : a), x.placements[0]);
+      let st, lab;
+      if (x.errs.length){ st='fail'; lab='Error'; }
+      else if (x.mask || x.bpc === 1 || x.W <= 4 || x.H <= 4){ st='info'; lab='Line art'; }
+      else if (minP < settings.lowPPI){ st='fail'; lab='Low-res'; }
+      else if (minP < settings.targetPPI - 0.5){ st='warn'; lab='Soft'; }
+      else if (x.cs.model === 'RGB'){ st='fail'; lab='RGB'; }
+      else if (x.warns.length){ st='warn'; lab='Check'; }
+      else { st='pass'; lab='OK'; }
+      const csTag = x.cs.model === 'RGB' ? `<span class="tag fail">${esc(x.cs.label)}</span>` : x.cs.model === 'Spot' ? `<span class="tag warn">${esc(x.cs.label)}</span>` : esc(x.cs.label);
+      return `<tr><td class="mono">${esc(pageList(x.placements.map(q=>q.page)).replace(/^pages? /,''))}</td><td class="mono">${x.W}×${x.H}</td><td class="mono">${p ? `${p.wIn.toFixed(2)}×${p.hIn.toFixed(2)}″` : '—'}</td><td class="mono"><b>${isFinite(minP)?Math.round(minP):'—'}</b></td><td>${csTag}</td><td>${esc(x.compression)}</td><td><span class="tag ${st}">${lab}</span>${x.errs.length ? `<div style="font-size:12px;color:var(--fail);margin-top:3px">${esc(x.errs.join('; '))}</div>` : ''}</td></tr>`;
+    }).join('');
+    h += `<details class="sec" ${imgs.some(x=>x.errs.length||x.cs.model==='RGB'||(x.placements.length&&Math.min(...x.placements.map(p=>p.ppi))<settings.targetPPI-0.5&&!x.mask&&x.bpc!==1&&x.W>4))?'open':''}><summary>Images<span class="count">${imgs.length}</span></summary><div class="tbl-wrap"><table><thead><tr><th>Page</th><th>Pixels</th><th>Printed size</th><th>Effective ppi</th><th>Color</th><th>Compression</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+  }
+  if (fonts.length){
+    h += `<details class="sec" ${fonts.some(f=>!f.embedded)?'open':''}><summary>Fonts<span class="count">${fonts.length}</span></summary><div class="tbl-wrap"><table><thead><tr><th>Font</th><th>Type</th><th>Embedded</th><th>Used on</th></tr></thead><tbody>${fonts.map(f => `<tr><td>${esc(f.name)}</td><td>${esc(f.type)}</td><td>${f.embedded ? `<span class="tag pass">${f.subset?'Yes (subset)':'Yes'}</span>` : '<span class="tag fail">No</span>'}</td><td class="mono">${esc(pageList([...f.pages]).replace(/^pages? /,''))}</td></tr>`).join('')}</tbody></table></div></details>`;
+  }
+  // pages
+  h += `<details class="sec"><summary>Pages<span class="count">${r.pages.length}</span></summary><div class="tbl-wrap"><table><thead><tr><th>Page</th><th>Finished size</th><th>With bleed</th><th>Bleed (L / T / R / B)</th><th>Status</th></tr></thead><tbody>${r.pages.map(p => {
+    const bs = { ok:['pass','OK'], none:['fail','No bleed'], short:['fail','Too small'], unknown:['warn','Unknown'] }[p.bleedStatus];
+    if ((p.bleedStatus==='none'||p.bleedStatus==='short') && p.edgeInk && !p.edgeInk.length){ bs[0]='warn'; bs[1]='No bleed (white edges)'; }
+    return `<tr><td class="mono">${p.n}</td><td class="mono">${fmtIn(p.trimW)} × ${fmtIn(p.trimH)}″</td><td class="mono">${fmtIn(rw(p.bleed)*p.uu)} × ${fmtIn(rh(p.bleed)*p.uu)}″</td><td class="mono">${p.margins ? p.margins.map(x=>+(x/72).toFixed(3)).join(' / ') : '—'}</td><td><span class="tag ${bs[0]}">${bs[1]}</span>${p.rotate?` <span class="tag info">Rotated ${p.rotate}°</span>`:''}</td></tr>`; }).join('')}</tbody></table></div></details>`;
+  return h;
+}
+function colorSummary(r){
+  const s = [];
+  const imgs = [...r.images.values()];
+  if (r.colors.cmyk || imgs.some(x=>x.cs.model==='CMYK')) s.push('CMYK');
+  if (r.colors.gray || imgs.some(x=>x.cs.model==='Gray')) s.push('Grayscale');
+  if (r.vecRGBPages.length || imgs.some(x=>x.cs.model==='RGB')) s.push('<span class="tag fail">RGB</span>');
+  if (r.colors.lab.size) s.push('<span class="tag warn">Lab</span>');
+  if (r.spotsUsed.size || r.spotsDefined.size) s.push('<span class="tag warn">Spot</span>');
+  return s.join(' · ') || 'None detected';
+}
+function textReport(r){
+  const v = r.verdict; const L2 = [];
+  L2.push(`PREFLIGHT REPORT — ${r.name}`);
+  L2.push(`Result: ${OVERALL[v.overall].replace(/^[^ ]+ /,'')}`);
+  L2.push(`Checked: ${new Date().toLocaleString()}`);
+  L2.push('');
+  for (const [k,c] of Object.entries(v.C)) L2.push(`${(LABELS[k]+':').padEnd(19)}${STATUS_WORD[c.s].toUpperCase()} — ${c.sum}`);
+  if (r.isPdf && !r.damaged && !r.encrypted){
+    const p0 = r.pages[0]; const fonts = [...r.fonts.values()]; const imgs = [...r.images.values()];
+    const spots = [...new Set([...r.spotsUsed, ...r.spotsDefined])];
+    L2.push('', `File size:        ${fmtBytes(r.size)}`, `PDF version:      ${r.version}${r.pdfx ? ' ('+r.pdfx+')' : ''}`, `Pages:            ${r.pageCount}`);
+    if (p0) L2.push(`Finished size:    ${fmtIn(p0.trimW)} x ${fmtIn(p0.trimH)} in`, `Bleed:            ${p0.margins ? fmtMargins(p0).replace(/″/g,' in') : 'unknown'}`);
+    L2.push(`Color:            ${colorSummary(r).replace(/<[^>]+>/g,'')}`);
+    L2.push(`Spot colors:      ${spots.length ? spots.join(', ') : 'None'}`);
+    L2.push(`Images:           ${imgs.length}`);
+    imgs.forEach(x => { const m = x.placements.length ? Math.round(Math.min(...x.placements.map(p=>p.ppi))) : '-'; L2.push(`  - ${pageList(x.placements.map(p=>p.page))}: ${x.W}x${x.H}px, ${m} ppi, ${x.cs.label}${x.errs.length ? ' — ERROR: ' + x.errs.join('; ') : ''}`); });
+    L2.push(`Fonts:            ${fonts.length}${fonts.length ? '' : ' (none / outlined)'}`);
+    fonts.forEach(f => L2.push(`  - ${f.name} (${f.type}) — ${f.embedded ? 'embedded' : 'NOT EMBEDDED'}`));
+  }
+  if (v.I.length){ L2.push('', 'ISSUES:'); v.I.forEach(i => L2.push(`[${i.s.toUpperCase()}] ${i.m}${i.fix ? '\n        Fix: ' + i.fix : ''}`)); }
+  return L2.join('\n');
+}
+function updateToolbar(){ $('#toolbar').hidden = !jobs.length; $('#resCount').textContent = jobs.length === 1 ? 'Result' : `Results (${jobs.length} files)`; }
+
+/* ---------- inputs ---------- */
+const drop = $('#drop'), input = $('#fileInput');
+input.addEventListener('change', () => { if (input.files.length) addFiles([...input.files]); input.value = ''; });
+drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+['dragenter','dragover'].forEach(t => window.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(t => window.addEventListener(t, e => { e.preventDefault(); if (t === 'drop' || e.target === document.documentElement || !e.relatedTarget) drop.classList.remove('over'); }));
+window.addEventListener('drop', e => { const f = [...(e.dataTransfer?.files || [])]; if (f.length) addFiles(f); });
+$('#clearAll').onclick = () => { jobs.splice(0).forEach(j => { try { j.r?.pdfjs?.destroy(); } catch {} j.el.remove(); }); updateToolbar(); };
+$('#printAll').onclick = () => { document.querySelectorAll('details.sec').forEach(d => d.open = true); window.print(); };
+
+initUI();
+if (!window.PDFLib) $('#results').innerHTML = `<div class="panel" style="padding:18px">The checking library couldn't load. Please check your internet connection and refresh the page.</div>`;
+getPdfjs(); // warm up the preview library
+</script>
+</body>
+</html>
