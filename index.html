@@ -237,7 +237,7 @@ function initUI(){
   $('#bleedIn').value = settings.bleedIn; $('#minPPI').value = settings.targetPPI; $('#lowPPI').value = settings.lowPPI;
   renderReqs();
   const f = $('#footer');
-  f.innerHTML = `${esc(CONFIG.shopName)} · File preflight${CONFIG.contactEmail ? ` · Questions? <a href="mailto:${esc(CONFIG.contactEmail)}">${esc(CONFIG.contactEmail)}</a>` : ''}<br>Automated checks catch most problems, but our prepress team reviews every job before it prints.`;
+  f.innerHTML = `${esc(CONFIG.shopName)} · File preflight${CONFIG.contactEmail ? ` · Questions? <a href="mailto:${esc(CONFIG.contactEmail)}">${esc(CONFIG.contactEmail)}</a>` : ''}<br>Automated checks catch most problems before it prints.`;
   const onChange = () => {
     settings.size = sel.value; settings.cw = +$('#cw').value || 8.5; settings.ch = +$('#ch').value || 11;
     settings.bleedIn = Math.max(0, +$('#bleedIn').value || 0); settings.targetPPI = +$('#minPPI').value || CONFIG.targetPPI; settings.lowPPI = +$('#lowPPI').value || CONFIG.lowResPPI;
